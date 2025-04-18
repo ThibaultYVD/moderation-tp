@@ -46,6 +46,7 @@ async def on_message(message):
 
     if not content.startswith("!"):
         response = await check_message_violation(content)
+        print(response)
         if response.get("violation"):
             try:
                 await message.delete()
@@ -62,12 +63,7 @@ async def on_message(message):
                 print("❌ Le bot n'a pas la permission de supprimer un message.")
             return
 
-    if content.startswith("!ask "):
-        question = content[5:]
-        response = await call_api("POST", "/ask", {"question": question})
-        await message.channel.send(f"💬 {response.get('response')}")
-
-    elif content.startswith("!ban "):
+    if content.startswith("!ban "):
         topic = content[5:]
         response = await call_api("POST", "/ban-topic", {"topic": topic})
         await message.channel.send(f"🛑 {response.get('message')}")

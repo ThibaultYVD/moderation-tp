@@ -4,6 +4,7 @@ from typing import List
 from langchain_community.llms import Ollama
 from langchain.chains import LLMChain
 from langchain.prompts import PromptTemplate
+import os
 
 app = FastAPI()
 
@@ -11,11 +12,10 @@ banned_topics = set()
 
 class TopicRequest(BaseModel):
     topic: str
-    
+
 class MessageRequest(BaseModel):
     message: str
 
-# === Routes ===
 @app.post("/ban-topic")
 def add_banned_topic(req: TopicRequest):
     topic = req.topic.strip().lower()
@@ -36,15 +36,22 @@ def remove_banned_topic(req: TopicRequest):
 def list_banned_topics():
     return {"banned_topics": list(banned_topics)}
 
-ollama_llm = Ollama(model="llama3.2")
+# === LLM avec prompt système ===
+ollama_llm = Ollama(
+    model="llama3.2",
+    base_url=os.getenv("OLLAMA_BASE_URL", "http://localhost:11434"),
+    system="Tu es un modérateur très strict d’un serveur Discord francophone. "
+           "Ta mission est de détecter si un message contient un sujet interdit, "
+           "même si c’est indirect, implicite, ou formulé de manière détournée. "
+           "Tu dois répondre uniquement par 'OUI' ou 'NON'."
+)
+
 message_check_prompt = PromptTemplate(
     input_variables=["message", "banned"],
     template=(
-        "Tu es un modérateur de communauté très strict. "
-        "Voici un message utilisateur : \"{message}\".\n"
+        "Voici un message utilisateur : \"{message}\"\n"
         "Les sujets interdits sont : {banned}.\n"
-        "Ta tâche est de dire si le message parle de l'un de ces sujets, ou de tout les sujets, même de façon indirecte, implicite, avec des synonymes ou un comportement équivalent.\n"
-        "Réponds uniquement par OUI ou NON. Ne donne aucune explication. Réponds OUI même si c'est subtil."
+        "Ce message enfreint-il l’un des sujets interdits ? Réponds par OUI ou NON uniquement."
     )
 )
 
@@ -52,8 +59,14 @@ message_check_prompt = PromptTemplate(
 def check_message_for_banned_topics(req: MessageRequest):
     banned = ", ".join(banned_topics)
     if not banned:
-        return {"violation": False}
+        return {"violation": False, "reason": "aucun sujet banni"}
 
+    prompt_text = message_check_prompt.format(message=req.message, banned=banned)
     chain = LLMChain(llm=ollama_llm, prompt=PromptTemplate.from_template(message_check_prompt.template))
     result = chain.run({"message": req.message, "banned": banned})
-    return {"violation": result.strip().lower().startswith("oui")}
+
+    return {
+        "violation": result.strip().lower().startswith("oui"),
+        "raw": result.strip(),
+        "prompt": prompt_text
+    }

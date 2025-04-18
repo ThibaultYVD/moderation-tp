@@ -1,0 +1,18 @@
+services:
+  api:
+    build: ./api
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./api:/app
+    restart: unless-stopped
+
+  bot:
+    build: ./client
+    depends_on:
+      - api
+    volumes:
+      - ./client:/app
+    env_file:
+      - ./client/.env
+    restart: unless-stopped
